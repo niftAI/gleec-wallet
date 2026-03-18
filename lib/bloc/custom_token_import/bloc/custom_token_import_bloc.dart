@@ -16,6 +16,40 @@ import 'package:web_dex/bloc/custom_token_import/data/custom_token_import_reposi
 import 'package:web_dex/model/coin_type.dart';
 import 'package:web_dex/shared/utils/extensions/kdf_user_extensions.dart';
 
+class _CustomTokenPreviewSession {
+  const _CustomTokenPreviewSession({
+    required this.platformAsset,
+    required this.wasPlatformAlreadyActivated,
+    this.tokenAsset,
+    this.wasTokenAlreadyActivated = false,
+    this.wasTokenAlreadyKnown = false,
+  });
+
+  final Asset platformAsset;
+  final bool wasPlatformAlreadyActivated;
+  final Asset? tokenAsset;
+  final bool wasTokenAlreadyActivated;
+  final bool wasTokenAlreadyKnown;
+
+  _CustomTokenPreviewSession copyWith({
+    Asset? platformAsset,
+    bool? wasPlatformAlreadyActivated,
+    Asset? Function()? tokenAsset,
+    bool? wasTokenAlreadyActivated,
+    bool? wasTokenAlreadyKnown,
+  }) {
+    return _CustomTokenPreviewSession(
+      platformAsset: platformAsset ?? this.platformAsset,
+      wasPlatformAlreadyActivated:
+          wasPlatformAlreadyActivated ?? this.wasPlatformAlreadyActivated,
+      tokenAsset: tokenAsset != null ? tokenAsset() : this.tokenAsset,
+      wasTokenAlreadyActivated:
+          wasTokenAlreadyActivated ?? this.wasTokenAlreadyActivated,
+      wasTokenAlreadyKnown: wasTokenAlreadyKnown ?? this.wasTokenAlreadyKnown,
+    );
+  }
+}
+
 class CustomTokenImportBloc
     extends Bloc<CustomTokenImportEvent, CustomTokenImportState> {
   CustomTokenImportBloc(
@@ -36,11 +70,14 @@ class CustomTokenImportBloc
   final KomodoDefiSdk _sdk;
   final AnalyticsBloc _analyticsBloc;
   final _log = Logger('CustomTokenImportBloc');
+  _CustomTokenPreviewSession? _previewSession;
 
-  void _onResetFormStatus(
+  Future<void> _onResetFormStatus(
     ResetFormStatusEvent event,
     Emitter<CustomTokenImportState> emit,
-  ) {
+  ) async {
+    await _rollbackPreviewIfNeeded();
+
     final availableCoinTypes = CoinType.values.map(
       (CoinType type) => type.toCoinSubClass(),
     );
@@ -84,10 +121,15 @@ class CustomTokenImportBloc
   ) async {
     emit(state.copyWith(formStatus: FormStatus.submitting));
 
-    Asset? tokenData;
-    var wasTokenAlreadyActivated = false;
     try {
       final platformAsset = _sdk.getSdkAsset(state.network.ticker);
+      final wasPlatformAlreadyActivated = await _coinsRepo.isAssetActivated(
+        platformAsset.id,
+      );
+      _previewSession = _CustomTokenPreviewSession(
+        platformAsset: platformAsset,
+        wasPlatformAlreadyActivated: wasPlatformAlreadyActivated,
+      );
 
       // Network (parent) asset must be active before attempting to fetch the
       // custom token data
@@ -97,13 +139,21 @@ class CustomTokenImportBloc
         addToWalletMetadata: false,
       );
 
-      tokenData = await _repository.fetchCustomToken(
+      final tokenData = await _repository.fetchCustomToken(
         network: state.network,
         platformAsset: platformAsset,
         address: state.address,
       );
-      wasTokenAlreadyActivated = await _coinsRepo.isAssetActivated(
+      final wasTokenAlreadyKnown = _sdk.assets.available.containsKey(
         tokenData.id,
+      );
+      final wasTokenAlreadyActivated = await _coinsRepo.isAssetActivated(
+        tokenData.id,
+      );
+      _previewSession = _previewSession?.copyWith(
+        tokenAsset: () => tokenData,
+        wasTokenAlreadyActivated: wasTokenAlreadyActivated,
+        wasTokenAlreadyKnown: wasTokenAlreadyKnown,
       );
       await _coinsRepo.activateAssetsSync(
         [tokenData],
@@ -134,6 +184,7 @@ class CustomTokenImportBloc
       );
     } catch (e, s) {
       _log.severe('Error fetching custom token', e, s);
+      await _rollbackPreviewIfNeeded();
       emit(
         state.copyWith(
           formStatus: FormStatus.failure,
@@ -141,12 +192,6 @@ class CustomTokenImportBloc
           formErrorMessage: _formatImportError(e),
         ),
       );
-    } finally {
-      if (tokenData != null && !wasTokenAlreadyActivated) {
-        // Activate to get balance, then deactivate to avoid confusion if the user
-        // does not proceed with the import (exits the dialog).
-        await _coinsRepo.deactivateCoinsSync([tokenData.toCoin()]);
-      }
     }
   }
 
@@ -181,6 +226,7 @@ class CustomTokenImportBloc
 
     try {
       await _repository.importCustomToken(state.coin!);
+      _previewSession = null;
 
       final walletType = (await _sdk.auth.currentUser)?.type ?? '';
       _analyticsBloc.logEvent(
@@ -216,8 +262,46 @@ class CustomTokenImportBloc
     };
   }
 
+  Future<void> _rollbackPreviewIfNeeded() async {
+    final previewSession = _previewSession;
+    _previewSession = null;
+
+    if (previewSession == null) {
+      return;
+    }
+
+    final rollbackAssets = <Asset>[];
+    final deleteCustomTokens = <AssetId>{};
+
+    final tokenAsset = previewSession.tokenAsset;
+    if (tokenAsset != null && !previewSession.wasTokenAlreadyActivated) {
+      rollbackAssets.add(tokenAsset);
+      if (!previewSession.wasTokenAlreadyKnown) {
+        deleteCustomTokens.add(tokenAsset.id);
+      }
+    }
+
+    if (!previewSession.wasPlatformAlreadyActivated) {
+      rollbackAssets.add(previewSession.platformAsset);
+    }
+
+    if (rollbackAssets.isEmpty && deleteCustomTokens.isEmpty) {
+      return;
+    }
+
+    try {
+      await _coinsRepo.rollbackPreviewAssets(
+        rollbackAssets,
+        deleteCustomTokens: deleteCustomTokens,
+      );
+    } catch (e, s) {
+      _log.warning('Failed to rollback preview activation state', e, s);
+    }
+  }
+
   @override
   Future<void> close() async {
+    await _rollbackPreviewIfNeeded();
     _repository.dispose();
     await super.close();
   }

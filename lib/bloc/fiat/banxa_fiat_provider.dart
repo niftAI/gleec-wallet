@@ -28,6 +28,14 @@ class BanxaFiatProvider extends BaseFiatProvider {
     }
   }
 
+  bool _isUnsupportedCurrency(ICurrency target) {
+    if (target is! CryptoCurrency) {
+      return false;
+    }
+
+    return _isUnsupportedCoinForChain(target.configSymbol, target.chainType);
+  }
+
   @override
   String getProviderId() {
     return providerId;
@@ -213,8 +221,8 @@ class BanxaFiatProvider extends BaseFiatProvider {
     String sourceAmount,
   ) async {
     try {
-      if (banxaUnsupportedCoinsList.contains(target.configSymbol)) {
-        _log.warning('Banxa does not support ${target.configSymbol}');
+      if (_isUnsupportedCurrency(target)) {
+        _log.warning('Banxa does not support ${target.getAbbr()}');
         return [];
       }
 

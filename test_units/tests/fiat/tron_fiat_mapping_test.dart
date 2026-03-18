@@ -82,6 +82,27 @@ class _TestBanxaFiatProvider extends BanxaFiatProvider {
   }
 }
 
+class _TestBanxaPaymentMethodsProvider extends BanxaFiatProvider {
+  int paymentMethodsRequests = 0;
+
+  @override
+  Future<dynamic> apiRequest(
+    String method,
+    String endpoint, {
+    Map<String, String>? queryParams,
+    Map<String, dynamic>? body,
+  }) async {
+    if (queryParams?['endpoint'] == '/api/payment-methods') {
+      paymentMethodsRequests += 1;
+      return {
+        'data': {'payment_methods': <Map<String, dynamic>>[]},
+      };
+    }
+
+    throw UnimplementedError('Unexpected Banxa API request');
+  }
+}
+
 void main() {
   group('TRON fiat mapping', () {
     final provider = _TestFiatProvider();
@@ -169,5 +190,59 @@ void main() {
         expect(coins.single.chainType, CoinType.trx);
       },
     );
+
+    test('Banxa payment methods allow native TRX', () async {
+      final provider = _TestBanxaPaymentMethodsProvider();
+
+      final methods = await provider.getPaymentMethodsList(
+        'USD',
+        CryptoCurrency(
+          symbol: 'TRX',
+          name: 'TRON',
+          chainType: CoinType.trx,
+          minPurchaseAmount: Decimal.zero,
+        ),
+        '100',
+      );
+
+      expect(methods, isEmpty);
+      expect(provider.paymentMethodsRequests, 1);
+    });
+
+    test('Banxa payment methods allow native AVAX', () async {
+      final provider = _TestBanxaPaymentMethodsProvider();
+
+      final methods = await provider.getPaymentMethodsList(
+        'USD',
+        CryptoCurrency(
+          symbol: 'AVAX',
+          name: 'Avalanche',
+          chainType: CoinType.avx20,
+          minPurchaseAmount: Decimal.zero,
+        ),
+        '100',
+      );
+
+      expect(methods, isEmpty);
+      expect(provider.paymentMethodsRequests, 1);
+    });
+
+    test('Banxa payment methods still block unsupported BEP20 TRX', () async {
+      final provider = _TestBanxaPaymentMethodsProvider();
+
+      final methods = await provider.getPaymentMethodsList(
+        'USD',
+        CryptoCurrency(
+          symbol: 'TRX',
+          name: 'TRON (BEP20)',
+          chainType: CoinType.bep20,
+          minPurchaseAmount: Decimal.zero,
+        ),
+        '100',
+      );
+
+      expect(methods, isEmpty);
+      expect(provider.paymentMethodsRequests, 0);
+    });
   });
 }

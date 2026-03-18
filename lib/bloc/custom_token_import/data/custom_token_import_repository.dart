@@ -97,9 +97,7 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
     final platformConfig = platformAsset.protocol.config;
     final String ticker = response.info.symbol;
     final int tokenDecimals = response.info.decimals;
-    final platformChainId = int.parse(
-      platformAsset.id.chainId.formattedChainId,
-    );
+    final int? platformChainId = platformConfig.valueOrNull<int>('chain_id');
     final coinId = '$ticker-${network.tokenStandardSuffix}';
     final conflictingAsset = _findExistingAssetByGeneratedId(
       network: network,
@@ -165,7 +163,7 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
           coinGeckoId: tokenApi?['id'],
           coinPaprikaId: tokenApi?['id'],
         ),
-        chainId: _copyChainIdWithDecimals(platformAsset, tokenDecimals),
+        chainId: ChainId.parse(protocol.config),
         subClass: network,
         derivationPath: platformAsset.id.derivationPath,
         parentId: platformAsset.id,
@@ -179,11 +177,6 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
     }
 
     return newCoin;
-  }
-
-  ChainId _copyChainIdWithDecimals(Asset asset, int decimals) {
-    final config = JsonMap.from(asset.protocol.config)..['decimals'] = decimals;
-    return ChainId.parse(config);
   }
 
   void _assertSupportedNetwork(CoinSubClass network) {
@@ -237,9 +230,7 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
       (asset) =>
           asset.id.id == assetId &&
           asset.id.subClass == network &&
-          asset.id.parentId == platformAsset.id &&
-          asset.id.chainId.formattedChainId ==
-              platformAsset.id.chainId.formattedChainId,
+          asset.id.parentId == platformAsset.id,
     );
   }
 
