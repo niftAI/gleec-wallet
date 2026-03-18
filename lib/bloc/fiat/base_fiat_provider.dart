@@ -111,7 +111,7 @@ abstract class BaseFiatProvider {
         return currency.configSymbol;
       case CoinType.trx:
       case CoinType.trc20:
-        return 'TRX';
+        return 'TRON';
       case CoinType.erc20:
         return 'ETH';
       case CoinType.bep20:

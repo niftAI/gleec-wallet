@@ -148,7 +148,7 @@ void main() {
       final apiClient = _FakeApiClient(
         convertedContractAddress: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
         tokenSymbol: 'USDT',
-        decimals: 6,
+        decimals: 18,
       );
       final repository = KdfCustomTokenImportRepository(
         _FakeSdk(
@@ -192,6 +192,8 @@ void main() {
             .lastGetTokenInfoRequest?['params']['protocol']['protocol_data']['platform'],
         equals('TRX'),
       );
+      expect(asset.id.chainId.decimals, 18);
+      expect(asset.protocol.config['decimals'], 18);
     });
 
     test('same-contract re-import returns the existing known asset', () async {

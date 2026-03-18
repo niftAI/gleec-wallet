@@ -96,6 +96,7 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
 
     final platformConfig = platformAsset.protocol.config;
     final String ticker = response.info.symbol;
+    final int tokenDecimals = response.info.decimals;
     final platformChainId = int.parse(
       platformAsset.id.chainId.formattedChainId,
     );
@@ -136,6 +137,7 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
           coin: coinId,
           type: network.tokenStandardSuffix,
           chainId: platformChainId,
+          decimals: tokenDecimals,
           contractAddress: contractAddress,
           platform: network.ticker,
           logoImageUrl: logoImageUrl,
@@ -145,6 +147,7 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
         coin: coinId,
         type: network.tokenStandardSuffix,
         chainId: platformChainId,
+        decimals: tokenDecimals,
         contractAddress: contractAddress,
         platform: network.ticker,
         logoImageUrl: logoImageUrl,
@@ -162,7 +165,7 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
           coinGeckoId: tokenApi?['id'],
           coinPaprikaId: tokenApi?['id'],
         ),
-        chainId: platformAsset.id.chainId,
+        chainId: _copyChainIdWithDecimals(platformAsset, tokenDecimals),
         subClass: network,
         derivationPath: platformAsset.id.derivationPath,
         parentId: platformAsset.id,
@@ -176,6 +179,11 @@ class KdfCustomTokenImportRepository implements ICustomTokenImportRepository {
     }
 
     return newCoin;
+  }
+
+  ChainId _copyChainIdWithDecimals(Asset asset, int decimals) {
+    final config = JsonMap.from(asset.protocol.config)..['decimals'] = decimals;
+    return ChainId.parse(config);
   }
 
   void _assertSupportedNetwork(CoinSubClass network) {
@@ -355,12 +363,14 @@ extension on Erc20Protocol {
     String? logoImageUrl,
     bool? isCustomToken,
     int? chainId,
+    int? decimals,
   }) {
     final currentConfig = JsonMap.from(config);
     currentConfig.addAll({
       if (coin != null) 'coin': coin,
       if (type != null) 'type': type,
       if (chainId != null) 'chain_id': chainId,
+      if (decimals != null) 'decimals': decimals,
       if (platform != null) 'parent_coin': platform,
       if (logoImageUrl != null) 'logo_image_url': logoImageUrl,
       if (isCustomToken != null) 'is_custom_token': isCustomToken,
@@ -400,12 +410,14 @@ extension on Trc20Protocol {
     String? logoImageUrl,
     bool? isCustomToken,
     int? chainId,
+    int? decimals,
   }) {
     final currentConfig = JsonMap.from(config);
     currentConfig.addAll({
       if (coin != null) 'coin': coin,
       if (type != null) 'type': type,
       if (chainId != null) 'chain_id': chainId,
+      if (decimals != null) 'decimals': decimals,
       if (platform != null) 'parent_coin': platform,
       if (logoImageUrl != null) 'logo_image_url': logoImageUrl,
       if (isCustomToken != null) 'is_custom_token': isCustomToken,

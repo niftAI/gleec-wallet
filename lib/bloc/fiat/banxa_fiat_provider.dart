@@ -14,6 +14,20 @@ class BanxaFiatProvider extends BaseFiatProvider {
   final String apiEndpoint = '/api/v1/banxa';
   static final _log = Logger('BanxaFiatProvider');
 
+  bool _isUnsupportedCoinForChain(String coinCode, CoinType coinType) {
+    switch (coinCode) {
+      case 'AVAX':
+      case 'DOT':
+      case 'FIL':
+      case 'TRX':
+        return coinType == CoinType.bep20;
+      case 'TON':
+        return coinType == CoinType.erc20;
+      default:
+        return banxaUnsupportedCoinsList.contains(coinCode);
+    }
+  }
+
   @override
   String getProviderId() {
     return providerId;
@@ -142,11 +156,6 @@ class BanxaFiatProvider extends BaseFiatProvider {
     final List<CryptoCurrency> currencyList = [];
     for (final item in data) {
       final coinCode = item['coin_code'] as String;
-      if (banxaUnsupportedCoinsList.contains(coinCode)) {
-        _log.warning('Banxa does not support $coinCode');
-        continue;
-      }
-
       final coinName = item['coin_name'] as String;
       final blockchains = item['blockchains'] as List<dynamic>;
 
@@ -156,6 +165,10 @@ class BanxaFiatProvider extends BaseFiatProvider {
           coinSymbol: coinCode,
         );
         if (coinType == null) {
+          continue;
+        }
+        if (_isUnsupportedCoinForChain(coinCode, coinType)) {
+          _log.warning('Banxa does not support $coinCode on ${coinType.name}');
           continue;
         }
 
