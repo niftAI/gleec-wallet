@@ -24,7 +24,7 @@ jobs:
             artifact_name: komodo-wallet-macos
           - platform: windows
             runner: windows-latest
-            build_command: flutter build windows --no-pub --release
+            build_command: flutter build windows --release
             artifact_path: build/windows/x64/runner/Release/*
             artifact_name: komodo-wallet-windows
           - platform: linux
