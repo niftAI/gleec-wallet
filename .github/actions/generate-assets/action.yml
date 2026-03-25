@@ -159,10 +159,13 @@ runs:
         
         
         echo "--- STARTING ASSET DOWNLOAD DUMMY BUILD ---"
-        flutter pub get --enforce-lockfile || true
-        $BUILD_CMD || true
-        echo "--- DUMMY BUILD FINISHED (Crash expected and ignored) ---"
+        flutter pub get --enforce-lockfile > /dev/null 2>&1 || true
         
+        # We are putting the '|| true' back so it ignores the intentional crash!
+        $BUILD_CMD > /dev/null 2>&1 || true
+        
+        echo "--- ASSET DOWNLOAD ATTEMPT COMPLETE ---"
+                
         rm -rf build/*
 
         # Run flutter build and capture its output
