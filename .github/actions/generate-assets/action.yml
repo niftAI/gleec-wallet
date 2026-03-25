@@ -158,9 +158,12 @@ runs:
         # Run flutter build once to download coin icons and config files. 
         # This step is expected to "fail", since flutter build has to run again 
         # after the assets are downloaded to register them in AssetManifest.bin
-        echo ""
-        flutter pub get --enforce-lockfile > /dev/null 2>&1 || true
-        $BUILD_CMD > /dev/null 2>&1 || true
+        
+        echo "--- STARTING ASSET DOWNLOAD DUMMY BUILD ---"
+        flutter pub get --enforce-lockfile 
+        $BUILD_CMD || echo "Dummy build finished (Expected to fail, continuing...)"
+        echo "--- ASSET DOWNLOAD ATTEMPT COMPLETE ---"
+        
         rm -rf build/*
 
         # Run flutter build and capture its output
