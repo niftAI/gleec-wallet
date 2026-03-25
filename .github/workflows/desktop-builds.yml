@@ -54,7 +54,7 @@ jobs:
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
 
-      # Linux setup
+      # Linux setup 
       - name: Setup Linux environment
         if: ${{ matrix.platform == 'linux' }}
         uses: ./.github/actions/releases/setup-linux
