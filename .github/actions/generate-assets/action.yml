@@ -160,7 +160,7 @@ runs:
         
         echo "--- STARTING ASSET DOWNLOAD DUMMY BUILD ---"
         flutter pub get --enforce-lockfile 
-        $BUILD_CMD || echo "Dummy build finished (Expected to fail, continuing...)"
+        $BUILD_CMD -v || echo "Dummy build finished (Expected to fail, continuing...)"
         echo "--- ASSET DOWNLOAD ATTEMPT COMPLETE ---"
         
         rm -rf build/*
