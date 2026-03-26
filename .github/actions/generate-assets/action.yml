@@ -162,7 +162,7 @@ runs:
         
         # 2. Manually download the OLD coins.json that matches your code (3 months ago)
         # Replace YOUR_HASH with the one from the working build
-        curl -L https://raw.githubusercontent.com/KomodoPlatform/coins/YOUR_HASH/coins -o sdk/packages/komodo_defi_framework/assets/config/coins.json
+        curl -L https://raw.githubusercontent.com/KomodoPlatform/coins/b8f85666325ca1cc6306ca113e7129d73e77e0f0/coins -o sdk/packages/komodo_defi_framework/assets/config/coins.json
         
         # 3. Tell the transformer to STOP updating
         export UPDATE_COMMIT_ON_BUILD=false
