@@ -153,15 +153,19 @@ runs:
           BUILD_CMD="$BUILD_CMD --dart-define=CI=true --dart-define=ANALYTICS_DISABLED=true"
         fi
         # ==========================================
-        # ADD THIS NEW BLOCK RIGHT HERE
+        # GITHUB COIN LOCK
         # ==========================================
         # Force the transformer to use the legacy 3-month-old commit hash 
         # already saved in the repository, instead of pulling the broken schema from today.
-        CONFIG_FILE="sdk/packages/komodo_defi_framework/app_build/build_config.json"
-        if [ -f "$CONFIG_FILE" ]; then
-          echo "Locking coin assets to legacy commit..."
-          sed 's/"updateCommitOnBuild": *true/"updateCommitOnBuild": false/g' "$CONFIG_FILE" > tmp.json && mv tmp.json "$CONFIG_FILE"
-        fi
+        # 1. Create the directory if it doesn't exist
+        mkdir -p sdk/packages/komodo_defi_framework/assets/config/
+        
+        # 2. Manually download the OLD coins.json that matches your code (3 months ago)
+        # Replace YOUR_HASH with the one from the working build
+        curl -L https://raw.githubusercontent.com/KomodoPlatform/coins/YOUR_HASH/coins -o sdk/packages/komodo_defi_framework/assets/config/coins.json
+        
+        # 3. Tell the transformer to STOP updating
+        export UPDATE_COMMIT_ON_BUILD=false
         # ==========================================
         
         # Run flutter build once to download coin icons and config files. 
