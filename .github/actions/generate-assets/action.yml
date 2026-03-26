@@ -152,7 +152,19 @@ runs:
           echo "CI environment detected without Matomo config. Disabling analytics for this build."
           BUILD_CMD="$BUILD_CMD --dart-define=CI=true --dart-define=ANALYTICS_DISABLED=true"
         fi
+        # ==========================================
+        # GITHUB LOCK PROCEDURE
+        # ==========================================
+        # Force the transformer to use the legacy 3-month-old commit hash 
+        # already saved in the repository, instead of pulling the broken schema from today.
+        CONFIG_FILE="sdk/packages/komodo_defi_framework/app_build/build_config.json"
+        if [ -f "$CONFIG_FILE" ]; then
+          echo "Locking coin assets to legacy commit..."
+          sed 's/"updateCommitOnBuild": *true/"updateCommitOnBuild": false/g' "$CONFIG_FILE" > tmp.json && mv tmp.json "$CONFIG_FILE"
+        fi
+        # ==========================================
 
+        
         # Run flutter build once to download coin icons and config files. 
         # This step is expected to "fail", since flutter build has to run again 
         # after the assets are downloaded to register them in AssetManifest.bin
