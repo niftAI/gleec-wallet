@@ -60,17 +60,15 @@ runs:
       run: |
         echo "Determining commit hash..."
         if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-          # For PRs, use the HEAD of the feature branch
           PR_SHA=$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")
           COMMIT_HASH=${PR_SHA:0:7}
           echo "Detected pull_request event. Using PR HEAD SHA: $COMMIT_HASH"
         else
-          # Otherwise use the current checked-out HEAD
           COMMIT_HASH=$(git rev-parse --short HEAD | cut -c1-7)
           echo "Using git HEAD SHA: $COMMIT_HASH"
         fi
-        # Export for subsequent steps
         echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
+
     - name: Fetch packages and generate assets
       shell: bash
       env:
@@ -88,103 +86,88 @@ runs:
         echo "Running \`flutter build\` to generate assets for the deployment build"
 
         if [ -n "$GITHUB_API_PUBLIC_READONLY_TOKEN" ]; then
-          echo "GITHUB_TOKEN provided, running flutter build with token"
+          echo "GITHUB_TOKEN provided"
         else
-          echo "GITHUB_TOKEN not provided or empty, running flutter build without token"
           unset GITHUB_API_PUBLIC_READONLY_TOKEN
         fi
 
-        # Now COMMIT_HASH comes from the previous step, not recalculated here.
-
-        # Prepare build command with feedback service credentials
+        # Prepare build command
         BUILD_CMD="${{ inputs.BUILD_COMMAND }}"
-
-        # Add commit hash to build command
         BUILD_CMD="$BUILD_CMD --dart-define=COMMIT_HASH=$COMMIT_HASH"
 
-        # Check and add the shared Trello board and list IDs if they are available
+        # Trello logic
         HAVE_TRELLO_IDS=false
         if [ -n "$TRELLO_BOARD_ID" ] && [ -n "$TRELLO_LIST_ID" ]; then
           HAVE_TRELLO_IDS=true
-          # Add these shared IDs to the build command
           BUILD_CMD="$BUILD_CMD --dart-define=TRELLO_BOARD_ID=$TRELLO_BOARD_ID"
           BUILD_CMD="$BUILD_CMD --dart-define=TRELLO_LIST_ID=$TRELLO_LIST_ID"
         fi
 
-        # Add Trello feedback service variables if ALL required values are provided
         if [ "$HAVE_TRELLO_IDS" = true ] && [ -n "$TRELLO_API_KEY" ] && [ -n "$TRELLO_TOKEN" ]; then
-          echo "Adding Trello feedback service configuration"
           BUILD_CMD="$BUILD_CMD --dart-define=TRELLO_API_KEY=$TRELLO_API_KEY"
           BUILD_CMD="$BUILD_CMD --dart-define=TRELLO_TOKEN=$TRELLO_TOKEN"
-        else
-          # If any Trello credential is missing, log a message but continue the build
-          if [ -n "$TRELLO_API_KEY" ] || [ -n "$TRELLO_TOKEN" ] || [ -n "$TRELLO_BOARD_ID" ] || [ -n "$TRELLO_LIST_ID" ]; then
-            echo "Warning: Incomplete Trello credentials provided. All Trello credentials must be present to include them in the build."
-          fi
         fi
 
-        # Add Cloudflare feedback service variables if ALL required values are provided
-        # Note: Cloudflare also needs the Trello board and list IDs to be available
+        # Cloudflare logic
         if [ "$HAVE_TRELLO_IDS" = true ] && [ -n "$FEEDBACK_API_KEY" ] && [ -n "$FEEDBACK_PRODUCTION_URL" ]; then
-          echo "Adding Cloudflare feedback service configuration"
           BUILD_CMD="$BUILD_CMD --dart-define=FEEDBACK_API_KEY=$FEEDBACK_API_KEY"
           BUILD_CMD="$BUILD_CMD --dart-define=FEEDBACK_PRODUCTION_URL=$FEEDBACK_PRODUCTION_URL"
-        else
-          # If any Cloudflare credential is missing, log a message but continue the build
-          if [ -n "$FEEDBACK_API_KEY" ] || [ -n "$FEEDBACK_PRODUCTION_URL" ] ||
-             ([ -n "$TRELLO_BOARD_ID" ] || [ -n "$TRELLO_LIST_ID" ]); then
-            echo "Warning: Incomplete Cloudflare feedback credentials provided. All Cloudflare credentials and Trello board/list IDs must be present to include them in the build."
-          fi
         fi
 
+        # Matomo logic
         HAS_MATOMO_CONFIG=false
         if [ -n "$MATOMO_URL" ] && [ -n "$MATOMO_SITE_ID" ]; then
           HAS_MATOMO_CONFIG=true
-          echo "Adding Matomo analytics configuration"
           BUILD_CMD="$BUILD_CMD --dart-define=MATOMO_URL=$MATOMO_URL"
           BUILD_CMD="$BUILD_CMD --dart-define=MATOMO_SITE_ID=$MATOMO_SITE_ID"
         fi
 
         if [ "$ANALYTICS_DISABLED" = "true" ]; then
-          echo "Disabling analytics via ANALYTICS_DISABLED input"
           BUILD_CMD="$BUILD_CMD --dart-define=ANALYTICS_DISABLED=true"
         elif [ "$CI" = "true" ] && [ "$HAS_MATOMO_CONFIG" != "true" ]; then
-          echo "CI environment detected without Matomo config. Disabling analytics for this build."
           BUILD_CMD="$BUILD_CMD --dart-define=CI=true --dart-define=ANALYTICS_DISABLED=true"
         fi
-        # ==========================================
-        # GITHUB COIN LOCK
-        # ==========================================
-        # Force the transformer to use the legacy 3-month-old commit hash 
-        # already saved in the repository, instead of pulling the broken schema from today.
-        # 1. Create the directory if it doesn't exist
+
+        # =====================================================================
+        # ASSET LOBOTOMY: Locking to legacy b8f856 commit
+        # =====================================================================
+        echo "Latching build_config.json to legacy commit b8f8566..."
+        
+        pwsh -Command "
+          \$path = 'sdk/packages/komodo_defi_framework/app_build/build_config.json'
+          if (Test-Path \$path) {
+            \$json = Get-Content \$path | ConvertFrom-Json
+            # Force the 3-month-old hash
+            \$json.coinCIConfig.bundled_coins_repo_commit = 'b8f85666325ca1cc6306ca113e7129d73e77e0f0'
+            # Disable the auto-updater
+            \$json.coinCIConfig.updateCommitOnBuild = \$false
+            \$json | ConvertTo-Json -Depth 10 | Set-Content \$path
+            Write-Host 'JSON successfully modified for legacy build.'
+          }
+        "
+
+        # Manually drop the correct coins.json file
         mkdir -p sdk/packages/komodo_defi_framework/assets/config/
-        
-        # 2. Manually download the OLD coins.json that matches your code (3 months ago)
-        # Replace YOUR_HASH with the one from the working build
         curl -L https://raw.githubusercontent.com/KomodoPlatform/coins/b8f85666325ca1cc6306ca113e7129d73e77e0f0/coins -o sdk/packages/komodo_defi_framework/assets/config/coins.json
-        
-        # 3. Tell the transformer to STOP updating
-        export UPDATE_COMMIT_ON_BUILD=false
-        # ==========================================
-        
-        # Run flutter build once to download coin icons and config files. 
-        # This step is expected to "fail", since flutter build has to run again 
-        # after the assets are downloaded to register them in AssetManifest.bin
-        echo ""
+        # =====================================================================
+
+        # Run dummy build to register assets
+        echo "Running Dummy Build..."
         flutter pub get --enforce-lockfile > /dev/null 2>&1 || true
         $BUILD_CMD > /dev/null 2>&1 || true
-        rm -rf build/*
+        
+        # Nuke cache so Flutter sees the new (old) coins.json
+        flutter clean
 
-        # Run flutter build and capture its output
+        # Final Build
+        echo "Running Final Build..."
         flutter pub get --enforce-lockfile
         echo "Running build command: $BUILD_CMD"
-        set +e  # Don't exit immediately on error
+        set +e
         $BUILD_CMD
         exit_status=$?
-        set -e  # Restore exit on error behavior
+        set -e
 
-        # Check if the exit status is non-zero (indicating an error)
         if [ $exit_status -ne 0 ]; then
             echo "Flutter build exited with status $exit_status"
             exit $exit_status
